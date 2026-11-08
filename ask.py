@@ -3,6 +3,7 @@
 ask - The Zero-Dependency Terminal AI Copilot
 Works on Linux, macOS, Termux, and WSL.
 Pure Python standard library (no external pip dependencies).
+v1.1.0: Added clipboard copy, flag-by-flag explain mode, and enhanced model support.
 """
 
 import sys
@@ -13,8 +14,9 @@ import subprocess
 import argparse
 import urllib.request
 import urllib.error
+import shutil
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 CONFIG_DIR = os.path.expanduser("~/.config/ask")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 
@@ -31,14 +33,14 @@ DIM = "\033[2m"
 DEFAULT_CONFIG = {
     "provider": "groq",
     "api_key": "",
-    "model": "openai/gpt-oss-120b",
+    "model": "llama-3.3-70b-versatile",
     "endpoint": "https://api.groq.com/openai/v1/chat/completions"
 }
 
 PROVIDERS = {
     "groq": {
         "endpoint": "https://api.groq.com/openai/v1/chat/completions",
-        "default_model": "openai/gpt-oss-120b",
+        "default_model": "llama-3.3-70b-versatile",
         "env_key": "GROQ_API_KEY"
     },
     "openai": {
@@ -48,7 +50,7 @@ PROVIDERS = {
     },
     "deepseek": {
         "endpoint": "https://api.deepseek.com/chat/completions",
-        "default_model": "deepseek-flash",
+        "default_model": "deepseek-chat",
         "env_key": "DEEPSEEK_API_KEY"
     },
     "ollama": {
@@ -68,7 +70,6 @@ def load_config():
         except Exception:
             pass
 
-    # Check environment variables (ASK_API_KEY wins, then the provider's own key)
     provider_env = PROVIDERS.get(config.get("provider", ""), {}).get("env_key", "")
     env_key = os.environ.get("ASK_API_KEY") or (os.environ.get(provider_env) if provider_env else "")
     if env_key and not config.get("api_key"):
@@ -120,7 +121,31 @@ def detect_env():
         "is_termux": is_termux
     }
 
-def query_ai(prompt, config, env_info):
+def copy_to_clipboard(text):
+    """Copies text to system clipboard across Termux, Linux, macOS, WSL."""
+    if shutil.which("termux-clipboard-set"):
+        p = subprocess.Popen(["termux-clipboard-set"], stdin=subprocess.PIPE)
+        p.communicate(input=text.encode("utf-8"))
+        return True
+    elif shutil.which("pbcopy"):
+        p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+        p.communicate(input=text.encode("utf-8"))
+        return True
+    elif shutil.which("wl-copy"):
+        p = subprocess.Popen(["wl-copy"], stdin=subprocess.PIPE)
+        p.communicate(input=text.encode("utf-8"))
+        return True
+    elif shutil.which("xclip"):
+        p = subprocess.Popen(["xclip", "-selection", "clipboard"], stdin=subprocess.PIPE)
+        p.communicate(input=text.encode("utf-8"))
+        return True
+    elif shutil.which("clip.exe"):
+        p = subprocess.Popen(["clip.exe"], stdin=subprocess.PIPE)
+        p.communicate(input=text.encode("utf-8"))
+        return True
+    return False
+
+def query_ai(prompt, config, env_info, explain_mode=False):
     api_key = config.get("api_key")
     endpoint = config.get("endpoint")
     model = config.get("model")
@@ -140,7 +165,10 @@ User Environment:
 Given a user's natural language request, return ONLY a valid JSON object in this exact format:
 {{
   "command": "the exact single-line shell command to execute",
-  "explanation": "한 문장의 한국어 설명 (무엇을 하는 명령어인지 명확하고 짧게)"
+  "explanation": "한 문장의 한국어 설명 (무엇을 하는 명령어인지 명확하고 짧게)",
+  "breakdown": [
+    {{"flag": "옵션이나 인자", "desc": "해당 옵션의 역할 설명"}}
+  ]
 }}
 
 Rules:
@@ -148,6 +176,7 @@ Rules:
 2. The command MUST be tailored for {env_info['os']} and {env_info['shell']}.
 3. Never output dangerous irreversible commands without flags.
 4. Keep the explanation to exactly 1 concise Korean sentence.
+5. In breakdown, explain 2-4 key flags or parts of the command concisely in Korean.
 """
 
     payload = {
@@ -161,7 +190,7 @@ Rules:
 
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "ask-cli/1.0.0"
+        "User-Agent": f"ask-cli/{VERSION}"
     }
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -199,18 +228,20 @@ Rules:
 def main():
     parser = argparse.ArgumentParser(
         prog="ask",
-        description="터미널에서 말로 물어보고 바로 실행하는 초경량 AI 도구"
+        description="터미널에서 말로 물어보고 바로 실행하는 초경량 AI 도구 (v1.1.0)"
     )
     parser.add_argument("prompt", nargs="*", help="수행하고 싶은 작업을 자연어로 입력 (예: 도커 컨테이너 정리해줘)")
     parser.add_argument("-y", "--yes", action="store_true", help="확인 절차 없이 바로 명령어 실행")
     parser.add_argument("-d", "--dry-run", action="store_true", help="명령어와 설명만 출력하고 실행하지 않음")
+    parser.add_argument("-e", "--explain", action="store_true", help="명령어 옵션 및 각 플래그의 상세 해설 출력")
+    parser.add_argument("-k", "--copy", action="store_true", help="생성된 명령어를 클립보드에 자동 복사")
     parser.add_argument("-c", "--config", action="store_true", help="API 키 및 제공자 설정 마법사 실행")
     parser.add_argument("-v", "--version", action="store_true", help="버전 정보 출력")
 
     args = parser.parse_args()
 
     if args.version:
-        print(f"{BOLD}ask-cli{RESET} v{VERSION}")
+        print(f"{BOLD}ask-cli{RESET} v{VERSION} ⚡ The Zero-Dependency Terminal AI Copilot")
         sys.exit(0)
 
     if args.config:
@@ -227,12 +258,13 @@ def main():
     # Query AI
     sys.stdout.write(f"{DIM}⚡ AI 생각 중...{RESET}\r")
     sys.stdout.flush()
-    result = query_ai(user_query, config, env_info)
+    result = query_ai(user_query, config, env_info, explain_mode=args.explain)
     sys.stdout.write(" " * 25 + "\r")
     sys.stdout.flush()
 
     cmd = result.get("command", "").strip()
     exp = result.get("explanation", "").strip()
+    breakdown = result.get("breakdown", [])
 
     if not cmd:
         print(f"{RED}적절한 명령어를 찾지 못했습니다.{RESET}")
@@ -244,7 +276,23 @@ def main():
     print(f"{CYAN}╰───────────────────────────────────────────────────╯{RESET}")
     print(f"  {BOLD}▶ 명령어:{RESET} {GREEN}{BOLD}{cmd}{RESET}")
     if exp:
-        print(f"  {DIM}ℹ️  설명:{RESET} {exp}\n")
+        print(f"  {DIM}ℹ️  설명:{RESET} {exp}")
+
+    # Flag-by-flag explain mode
+    if args.explain and breakdown:
+        print(f"\n  {BOLD}{MAGENTA}[옵션 상세 해설]{RESET}")
+        for item in breakdown:
+            flag = item.get("flag", "")
+            desc = item.get("desc", "")
+            print(f"    • {CYAN}{BOLD}{flag}{RESET}: {desc}")
+        print()
+
+    # Clipboard copy
+    if args.copy:
+        if copy_to_clipboard(cmd):
+            print(f"  {GREEN}📋 클립보드에 복사되었습니다!{RESET}")
+        else:
+            print(f"  {YELLOW}⚠️  클립보드 도구를 찾을 수 없습니다.{RESET}")
 
     if args.dry_run:
         sys.exit(0)
@@ -253,7 +301,7 @@ def main():
         should_run = True
     else:
         try:
-            choice = input(f"{BOLD}🚀 바로 실행할까요? [y/N]: {RESET}").strip().lower()
+            choice = input(f"\n{BOLD}🚀 바로 실행할까요? [y/N]: {RESET}").strip().lower()
             should_run = (choice == "y" or choice == "yes")
         except KeyboardInterrupt:
             print(f"\n{YELLOW}취소되었습니다.{RESET}")
