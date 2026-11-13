@@ -4,7 +4,7 @@
 > 터미널에서 한국어로 묻고, 바로 실행하는 가장 가벼운 AI 도구.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version: 1.1.0](https://img.shields.io/badge/version-1.1.0-blue.svg)](#)
+[![Version: 1.1.1](https://img.shields.io/badge/version-1.1.1-blue.svg)](#)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-brightgreen.svg)](https://www.python.org/)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](#)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Termux%20%7C%20macOS%20%7C%20WSL-orange.svg)](#)
@@ -40,7 +40,7 @@ Total reclaimed space: 1.42GB
 
 - 🪶 **의존성 0개 (Zero Dependencies):** 외부 라이브러리(`pip`) 설치 필요 없이 파이썬 기본 내장 모듈만으로 동작합니다. 빌드 에러 걱정 끝!
 - 📱 **안드로이드 Termux 공식 지원:** 스마트폰이나 태블릿(Termux)에서도 PC와 100% 동일하게 쌩쌩 돌아갑니다.
-- ⚡️ **압도적인 속도:** Groq 초고속 무료 티어(`llama-3.3-70b-versatile`), OpenAI(`gpt-6-luna`), DeepSeek(`deepseek-chat`), 로컬 Ollama까지 완벽 지원 (보통 1초 안에 응답).
+- ⚡️ **압도적인 속도:** Groq 초고속 무료 티어(`llama-3.3-70b-versatile`), OpenAI(`gpt-4o-mini`), DeepSeek(`deepseek-chat`), 로컬 Ollama까지 완벽 지원 (보통 1초 안에 응답).
 - 🔍 **옵션 상세 해설 (-e):** 초보자도 안심하고 쓸 수 있게 각 명령어 플래그의 역할을 한국어로 꼼꼼히 분해해 줍니다.
 - 📋 **클립보드 복사 (-k):** Termux, Linux, macOS, WSL 어디서든 명령어를 클립보드에 원클릭으로 담아줍니다.
 - 🛡 **안전 제일:** 위험할 수 있는 쉘 명령어를 실행하기 전 반드시 확인 절차(`[y/N]`)를 거칩니다.
@@ -77,7 +77,7 @@ export ASK_API_KEY="gsk_..."        # 어떤 제공자든 이 이름으로 넣�
 | 제공자 | 기본 모델 | 무료 사용 |
 | --- | --- | --- |
 | `groq` | `llama-3.3-70b-versatile` | 무료 플랜 지원 |
-| `openai` | `gpt-6-luna` | 유료 |
+| `openai` | `gpt-4o-mini` | 유료 |
 | `deepseek` | `deepseek-chat` | 유료 |
 | `ollama` | `llama3.2` | 로컬, 키 불필요 |
 
@@ -115,6 +115,25 @@ ask -y "nginx 서비스 재시작해줘"
 ```bash
 ask -d "현재 IP 주소 확인"
 ```
+
+---
+
+## 🆕 변경 내역
+
+### v1.1.1 — 모델 안정화 및 마이너 버그 수정
+- OpenAI 기본 모델을 불안정한 `gpt-6-luna`에서 안정적인 `gpt-4o-mini`로 변경
+- 네트워크/API 오류 처리를 강화해 어떤 실패든 **한 줄**로 깔끔하게 출력
+  - 응답 본문이 여러 줄 JSON이어도 에러 메시지만 추출
+  - 타임아웃(20초) 시 "응답 시간 초과" 안내로 통일
+  - 엔드포인트 연결 실패, 응답 형식 오류, 모델이 JSON이 아닌 답을 준 경우를 각각 구분
+- `Ctrl+C`로 취소해도 트레이스백 없이 종료
+
+<details>
+<summary>이전 버전</summary>
+
+**v1.1.0** — 옵션 상세 해설 모드(`-e`), 클립보드 복사(`-k`), 모델 지원 확장
+
+</details>
 
 ---
 

@@ -3,7 +3,7 @@
 ask - The Zero-Dependency Terminal AI Copilot
 Works on Linux, macOS, Termux, and WSL.
 Pure Python standard library (no external pip dependencies).
-v1.1.0: Added clipboard copy, flag-by-flag explain mode, and enhanced model support.
+v1.1.1: Stabilized default models and made network/API errors fail with one clean line.
 """
 
 import sys
@@ -14,9 +14,11 @@ import subprocess
 import argparse
 import urllib.request
 import urllib.error
+import socket
 import shutil
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
+REQUEST_TIMEOUT = 20
 CONFIG_DIR = os.path.expanduser("~/.config/ask")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 
@@ -45,7 +47,7 @@ PROVIDERS = {
     },
     "openai": {
         "endpoint": "https://api.openai.com/v1/chat/completions",
-        "default_model": "gpt-6-luna",
+        "default_model": "gpt-4o-mini",
         "env_key": "OPENAI_API_KEY"
     },
     "deepseek": {
@@ -145,6 +147,23 @@ def copy_to_clipboard(text):
         return True
     return False
 
+def one_line(text, limit=200):
+    """Collapses any text (multi-line JSON bodies included) into a single clean line."""
+    flat = " ".join(str(text).split())
+    return flat if len(flat) <= limit else flat[:limit] + "…"
+
+def clean_http_error(e):
+    """Pulls the human-readable message out of an HTTPError body, on one line."""
+    try:
+        body = e.read().decode("utf-8", "replace")
+    except Exception:
+        body = ""
+    try:
+        msg = json.loads(body)["error"]["message"]
+    except Exception:
+        msg = body or str(getattr(e, "reason", "")) or "알 수 없는 오류"
+    return one_line(msg)
+
 def query_ai(prompt, config, env_info, explain_mode=False):
     api_key = config.get("api_key")
     endpoint = config.get("endpoint")
@@ -202,33 +221,57 @@ Rules:
         method="POST"
     )
 
+    # --- Network: every failure path prints exactly one line ---
     try:
-        with urllib.request.urlopen(req, timeout=15) as res:
-            res_data = json.loads(res.read().decode("utf-8"))
-            content = res_data["choices"][0]["message"]["content"].strip()
-            
-            # Clean possible markdown block
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.startswith("```"):
-                content = content[3:]
-            if content.endswith("```"):
-                content = content[:-3]
-            content = content.strip()
-
-            return json.loads(content)
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as res:
+            raw = res.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
-        err_msg = e.read().decode("utf-8")
-        print(f"{RED}❌ API 오류 ({e.code}): {err_msg}{RESET}")
+        print(f"{RED}❌ API 오류 ({e.code}): {clean_http_error(e)}{RESET}")
         sys.exit(1)
+    except urllib.error.URLError as e:
+        reason = getattr(e, "reason", e)
+        if isinstance(reason, (socket.timeout, TimeoutError)):
+            print(f"{RED}❌ 응답 시간 초과 ({REQUEST_TIMEOUT}초): 네트워크 상태를 확인하고 다시 시도하세요.{RESET}")
+        else:
+            print(f"{RED}❌ 네트워크 오류: {one_line(reason)} — 엔드포인트({endpoint})와 연결을 확인하세요.{RESET}")
+        sys.exit(1)
+    except (socket.timeout, TimeoutError):
+        print(f"{RED}❌ 응답 시간 초과 ({REQUEST_TIMEOUT}초): 네트워크 상태를 확인하고 다시 시도하세요.{RESET}")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print(f"\n{YELLOW}취소되었습니다.{RESET}")
+        sys.exit(130)
     except Exception as e:
-        print(f"{RED}❌ 요청 실패: {e}{RESET}")
+        print(f"{RED}❌ 요청 실패: {one_line(e)}{RESET}")
+        sys.exit(1)
+
+    # --- Response: shape failures get their own clean message ---
+    try:
+        res_data = json.loads(raw)
+        content = res_data["choices"][0]["message"]["content"].strip()
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+        print(f"{RED}❌ 응답을 해석할 수 없습니다: 예상과 다른 응답 형식입니다 (모델: {model}).{RESET}")
+        sys.exit(1)
+
+    # Clean possible markdown block
+    if content.startswith("```json"):
+        content = content[7:]
+    if content.startswith("```"):
+        content = content[3:]
+    if content.endswith("```"):
+        content = content[:-3]
+    content = content.strip()
+
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        print(f"{RED}❌ 모델이 명령어를 JSON으로 돌려주지 않았습니다. 다시 시도해 보세요.{RESET}")
         sys.exit(1)
 
 def main():
     parser = argparse.ArgumentParser(
         prog="ask",
-        description="터미널에서 말로 물어보고 바로 실행하는 초경량 AI 도구 (v1.1.0)"
+        description="터미널에서 말로 물어보고 바로 실행하는 초경량 AI 도구 (v1.1.1)"
     )
     parser.add_argument("prompt", nargs="*", help="수행하고 싶은 작업을 자연어로 입력 (예: 도커 컨테이너 정리해줘)")
     parser.add_argument("-y", "--yes", action="store_true", help="확인 절차 없이 바로 명령어 실행")
