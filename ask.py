@@ -313,12 +313,16 @@ def load_config():
 
 
 def save_config(config, quiet=False):
+    keys = dict(config.get("keys", {}) or {})
+    provider = config.get("provider", "")
+    # Only keys the user actually stored are written back; an env-provided key
+    # (ASK_API_KEY/..._API_KEY) stays in the environment, not in config.json.
     data = {
-        "provider": config.get("provider", ""),
+        "provider": provider,
         "model": config.get("model", ""),
         "endpoint": config.get("endpoint", ""),
-        "api_key": config.get("api_key", ""),
-        "keys": config.get("keys", {}),
+        "api_key": keys.get(provider, ""),
+        "keys": keys,
     }
     for key in ("temperature", "daily_limit", "timeout", "extra"):
         if key in config:
@@ -815,6 +819,8 @@ def new_session(config):
 def save_session(session):
     if not session.get("messages"):
         return
+    if len(session["messages"]) > 200:
+        session["messages"] = session["messages"][-200:]
     session["updated"] = datetime.now().isoformat(timespec="seconds")
     path = os.path.join(SESSION_DIR, f"{session['id']}.json")
     if atomic_write_json(path, session):
