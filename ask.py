@@ -1024,7 +1024,7 @@ def chat_loop(config, initial=None):
             line = read_chat_line()
         except KeyboardInterrupt:
             print()
-            print(paint("채팅을 종료합니다. 세션은 저장했습니다.", YELLOW))
+            print(paint("채팅을 종료합니다." if not session.get("messages") else "채팅을 종료합니다. 세션은 저장했습니다.", YELLOW))
             break
         except EOFError:
             print()
