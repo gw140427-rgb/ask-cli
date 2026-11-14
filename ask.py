@@ -19,6 +19,7 @@ import socket
 import subprocess
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -55,6 +56,14 @@ def paint(text, *codes):
     if not COLOR or not codes:
         return str(text)
     return "".join(codes) + str(text) + RESET
+
+
+def disp_width(text):
+    """Terminal column width: CJK characters take two columns."""
+    width = 0
+    for ch in str(text):
+        width += 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+    return width
 
 
 def warn(text):
@@ -903,7 +912,7 @@ def chat_help():
         ("/exit, /quit", "종료 (Ctrl+C / Ctrl+D 도 됩니다)"),
     ]
     for cmd, desc in rows:
-        pad = " " * max(1, 22 - len(cmd))
+        pad = " " * max(1, 22 - disp_width(cmd))
         print(f"    {paint(cmd, CYAN, BOLD)}{pad}{desc}")
     print()
     print(paint("  그냥 문장을 입력하면 바로 대화가 이어집니다.", DIM))
