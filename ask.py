@@ -7,6 +7,8 @@ Pure Python standard library (no external pip dependencies).
 v1.2.0: interactive chat (ask chat / -c), session save/resume-listing,
         usage & limit viewer (--limits, /limits), local-first Ollama support,
         2026 model lineup, and a full bug sweep.
+v1.3.0: Claude provider (Anthropic, OpenAI-compatible endpoint) with
+        claude-fable-5-2, model lineup re-verified 2026-11-15.
 """
 
 import argparse
@@ -24,7 +26,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 # ASK_HOME lets you move the whole config dir (used by tests and portable installs).
 CONFIG_DIR = os.path.expanduser(os.environ.get("ASK_HOME") or "~/.config/ask")
@@ -104,7 +106,7 @@ def setup_console():
 
 
 # --- Providers --------------------------------------------------------------
-# Model IDs verified on 2026-11-14 against each provider's live docs.
+# Model IDs verified on 2026-11-15 against each provider's live docs.
 DEFAULT_CONFIG = {
     "provider": "groq",
     "api_key": "",
@@ -135,6 +137,14 @@ PROVIDERS = {
         "endpoint": "https://api.openai.com/v1/chat/completions",
         "default_model": "gpt-6.1-sol",
         "env_key": "OPENAI_API_KEY",
+        "daily_limit": 0,             # paid: no soft daily cap
+        "extra": {},
+    },
+    "claude": {
+        "label": "Claude",
+        "endpoint": "https://api.anthropic.com/v1/chat/completions",
+        "default_model": "claude-fable-5-2",
+        "env_key": "ANTHROPIC_API_KEY",
         "daily_limit": 0,             # paid: no soft daily cap
         "extra": {},
     },

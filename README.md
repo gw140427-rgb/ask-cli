@@ -4,7 +4,7 @@
 > 터미널에서 한국어로 묻고, 바로 실행하는 가장 가벼운 AI 도구.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version: 1.2.0](https://img.shields.io/badge/version-1.2.0-blue.svg)](#)
+[![Version: 1.3.0](https://img.shields.io/badge/version-1.2.0-blue.svg)](#)
 [![Python 3.7+](https://img.shields.io/badge/python-3.7+-brightgreen.svg)](https://www.python.org/)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](#)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Termux%20%7C%20macOS%20%7C%20WSL-orange.svg)](#)
@@ -135,6 +135,7 @@ export ASK_HOME="$HOME/.config/ask" # 설정 폴더를 옮길 때 (기본값 그
 | `groq` | `openai/gpt-oss-120b` | 무료 티어 | 대안 `openai/gpt-oss-20b`(더 빠름), `qwen/qwen3.8-27b` |
 | `openai` | `gpt-6.1-sol` | 유료 | 대안 `gpt-6-astra`(최상위), `gpt-6-luna`(저렴) |
 | `deepseek` | `deepseek-flash` | 유료 | thinking은 기본 OFF로 요청합니다(구 `deepseek-chat`과 같은 지연) |
+| `claude` | `claude-fable-5-2` | 유료 | 2026-11-09 공개. Anthropic의 OpenAI 호환 엔드포인트 사용 |
 
 **폐기된 모델은 자동으로 바뀝니다.** v1.1.1 이하 설정에 남아 있던 값은 첫 실행 때 새 기본값으로 갱신되고 한 줄로 알려줍니다.
 
@@ -215,6 +216,11 @@ ask --config      # 5번 선택
 
 ## 🆕 변경 내역
 
+### v1.3.0 — Claude 제공자 추가
+**신기능**
+- `claude` 제공자 추가: Anthropic의 OpenAI 호환 엔드포인트(`https://api.anthropic.com/v1/chat/completions`), 기본 모델 `claude-fable-5-2` (2026-11-09 공개된 장기 추론·에이전트 모델). 키는 `ANTHROPIC_API_KEY` 또는 `keys.claude`
+- 모델 라인업 2026-11-15 재확인 (기존 제공자 기본값은 그대로)
+
 ### v1.2.0 — 대화 · 사용량 · 로컬 모델
 **신기능**
 - `ask chat` / `ask -c` 대화형 채팅: 멀티턴, 세션 자동 저장(`~/.config/ask/sessions/`), `/new` `/history` `/limits` `/model` `/help` `/exit`
@@ -247,12 +253,12 @@ ask --config      # 5번 선택
 
 ## 🧪 검증
 
-`v1.2.0`은 실제 네트워크 없이 모의 OpenAI 호환 서버로 검사했습니다.
+`v1.3.0`은 실제 네트워크 없이 모의 OpenAI 호환 서버로 검사했습니다.
 
 ```bash
 python3 -m py_compile ask.py     # 구문
 bash -n install.sh               # 설치 스크립트
-python3 ask.py --version         # 1.2.0
+python3 ask.py --version         # 1.3.0
 python3 ask.py --limits          # 게이지
 ask chat  <<< $'/limits\n/new\n/help\n/exit\n'
 ```
