@@ -12,6 +12,8 @@ v1.3.0: Claude provider (Anthropic, OpenAI-compatible endpoint) with
 """
 
 import argparse
+import getpass
+import ipaddress
 import json
 import os
 import platform
@@ -23,6 +25,7 @@ import sys
 import time
 import unicodedata
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime
 
@@ -216,20 +219,42 @@ def one_line(text, limit=220):
     return flat if len(flat) <= limit else flat[:limit] + "…"
 
 
-def atomic_write_json(path, data, private=False):
-    """Write JSON via a temp file + os.replace so a crash never leaves a half file."""
-    ensure_dir(os.path.dirname(path) or ".")
-    tmp = f"{path}.tmp{os.getpid()}"
+def ensure_private_dir(path):
+    """Config and session folders hold API keys and chat logs — keep them 0700."""
+    ensure_dir(path)
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
+        os.chmod(path, 0o700)
+    except OSError:
+        pass
+
+
+def atomic_write_json(path, data, private=False):
+    """Write JSON via a temp file + os.replace so a crash never leaves a half file.
+
+    private=True creates the temp file with mode 0600 at creation time (and the
+    folder 0700), so a key or a saved chat is never readable by others, not even
+    for the moment between open() and chmod().
+    """
+    folder = os.path.dirname(path) or "."
+    if private:
+        ensure_private_dir(folder)
+    else:
+        ensure_dir(folder)
+    tmp = f"{path}.tmp{os.getpid()}"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        if os.path.lexists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        fd = os.open(tmp, flags, 0o600 if private else 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
             f.flush()
             os.fsync(f.fileno())
-        if private:
-            try:
-                os.chmod(tmp, 0o600)
-            except OSError:
-                pass
         os.replace(tmp, path)
         return True
     except OSError as e:
@@ -550,6 +575,84 @@ def http_error_message(e, provider, model, endpoint):
     return msg
 
 
+# --- Network safety ---------------------------------------------------------
+def is_local_host(host):
+    """True for localhost and loopback/private LAN addresses (plain http is fine there)."""
+    host = (host or "").strip().strip("[]").lower().rstrip(".")
+    if not host:
+        return False
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_private or address.is_link_local
+
+
+def check_endpoint_security(endpoint):
+    """https anywhere; plain http only to localhost or a LAN address.
+
+    Sending an API key over cleartext to a remote host leaks it to every router
+    on the way, so a remote http:// endpoint is refused before any request.
+    """
+    parts = urllib.parse.urlsplit(endpoint)
+    scheme = (parts.scheme or "").lower()
+    if scheme == "https":
+        return
+    if scheme == "http" and is_local_host(parts.hostname):
+        return
+    if scheme == "http":
+        raise AskError(
+            "평문 http:// 는 localhost·LAN 주소에만 허용됩니다 — "
+            f"바깥 서버는 https:// 를, LAN 기기는 이름 대신 IP를 적으세요: {one_line(endpoint, 80)}"
+        )
+    raise AskError(f"엔드포인트는 https:// 또는 http:// 로 시작해야 합니다: {one_line(endpoint, 80)}")
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follow redirects without handing the API key to another host (M-1).
+
+    urllib copies every header, Authorization included, onto the redirected
+    request. The key is only kept when the redirect stays on the same host and
+    port and never drops from https to http.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is None:
+            return None
+        old = urllib.parse.urlsplit(req.full_url)
+        target = urllib.parse.urlsplit(newurl)
+        same_origin = (old.scheme, old.hostname, old.port) == (target.scheme, target.hostname, target.port)
+        downgrade = old.scheme == "https" and target.scheme != "https"
+        if not same_origin or downgrade:
+            new.remove_header("Authorization")
+        return new
+
+
+HTTP_OPENER = urllib.request.build_opener(_SafeRedirectHandler)
+
+
+SECRET_ENV_NAMES = {"ASK_API_KEY", "ASK_API_TOKEN"}
+SECRET_ENV_SUFFIXES = ("_API_KEY", "_APIKEY", "_ACCESS_TOKEN", "_AUTH_TOKEN")
+
+
+def sanitized_command_env():
+    """Environment for a model-proposed shell command: no API keys (M-3).
+
+    The command runs in the user's shell, but a generated `env`, `printenv`, or
+    crash dump must not be able to print the key that paid for it.
+    """
+    env = {}
+    for name, value in os.environ.items():
+        upper = name.upper()
+        if upper in SECRET_ENV_NAMES or upper.endswith(SECRET_ENV_SUFFIXES):
+            continue
+        env[name] = value
+    return env
+
+
 def _network_chat(messages, config):
     """One POST to an OpenAI-compatible chat endpoint. Returns (content, usage)."""
     provider = config.get("provider", "groq")
@@ -569,6 +672,7 @@ def _network_chat(messages, config):
         )
     if not endpoint.startswith(("http://", "https://")):
         raise AskError(f"엔드포인트 형식이 올바르지 않습니다: {one_line(endpoint, 80)}")
+    check_endpoint_security(endpoint)
 
     payload = {"model": model, "messages": messages}
     temperature = config.get("temperature")
@@ -594,7 +698,7 @@ def _network_chat(messages, config):
     prompt_chars = sum(len(str(m.get("content", ""))) for m in messages)
 
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as res:
+        with HTTP_OPENER.open(req, timeout=timeout) as res:
             raw = res.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         record_usage(provider, model, ok=False, prompt_chars=prompt_chars)
@@ -813,7 +917,8 @@ def single_shot(query, config, args):
     print(f"\n{paint('실행 중:', BOLD)} {paint(cmd, DIM)}\n")
     sys.stdout.flush()
     try:
-        return subprocess.run(cmd, shell=True).returncode
+        # The model wrote this command; run it without any API key in its environment.
+        return subprocess.run(cmd, shell=True, env=sanitized_command_env()).returncode
     except KeyboardInterrupt:
         print(paint("\n중단되었습니다.", YELLOW))
         return 130
@@ -842,7 +947,7 @@ def save_session(session):
         session["messages"] = session["messages"][-200:]
     session["updated"] = datetime.now().isoformat(timespec="seconds")
     path = os.path.join(SESSION_DIR, f"{session['id']}.json")
-    if atomic_write_json(path, session):
+    if atomic_write_json(path, session, private=True):
         prune_sessions()
 
 
@@ -1093,6 +1198,25 @@ def prompt_input(label, default=""):
     return value or default
 
 
+def prompt_secret(label, default=""):
+    """Read an API key without echoing it. Piped stdin (scripts, tests) falls back to plain input."""
+    try:
+        interactive = bool(sys.stdin and sys.stdin.isatty())
+    except Exception:
+        interactive = False
+    if not interactive:
+        return prompt_input(label, default)
+    try:
+        value = getpass.getpass(label).strip()
+    except (KeyboardInterrupt, EOFError):
+        print()
+        raise AskError("설정을 취소했습니다.", code=130)
+    except Exception:
+        # Terminals getpass cannot drive (some Termux/screen setups): keep going.
+        return prompt_input(label, default)
+    return value or default
+
+
 def run_config_wizard():
     print()
     print(paint("=== ask CLI 설정 마법사 ===", BOLD, CYAN))
@@ -1119,11 +1243,12 @@ def run_config_wizard():
         endpoint = prompt_input(paint("엔드포인트 URL (예: http://192.168.0.10:11434/v1/chat/completions): ", BOLD))
         if not endpoint.startswith(("http://", "https://")):
             raise AskError("http:// 또는 https:// 로 시작하는 URL이 필요합니다.")
-        api_key = prompt_input(paint("API 키 (없으면 그냥 Enter): ", BOLD))
+        check_endpoint_security(endpoint)
+        api_key = prompt_secret(paint("API 키 (없으면 그냥 Enter): ", BOLD))
     elif provider == "ollama":
         print(paint("  · Ollama는 내 기기에서 돌아갑니다 (무제한·키 없음).", DIM))
     else:
-        api_key = prompt_input(paint(f"{info['label']} API 키 (나중에 넣어도 됩니다): ", BOLD))
+        api_key = prompt_secret(paint(f"{info['label']} API 키 (나중에 넣어도 됩니다): ", BOLD))
         if not api_key:
             print(paint(f"  · 키를 비워 두면 환경변수 {info['env_key']} 또는 ASK_API_KEY 를 씁니다.", DIM))
 

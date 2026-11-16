@@ -4,7 +4,7 @@
 > 터미널에서 한국어로 묻고, 바로 실행하는 가장 가벼운 AI 도구.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version: 1.3.0](https://img.shields.io/badge/version-1.2.0-blue.svg)](#)
+[![Version: 1.3.0](https://img.shields.io/badge/version-1.3.0-blue.svg)](#)
 [![Python 3.7+](https://img.shields.io/badge/python-3.7+-brightgreen.svg)](https://www.python.org/)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](#)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Termux%20%7C%20macOS%20%7C%20WSL-orange.svg)](#)
@@ -123,6 +123,15 @@ export ASK_API_KEY="gsk_..."        # 어떤 제공자든 이 이름으로 넣�
 # export GROQ_API_KEY=... / GEMINI_API_KEY=... / OPENAI_API_KEY=... / DEEPSEEK_API_KEY=...
 export ASK_HOME="$HOME/.config/ask" # 설정 폴더를 옮길 때 (기본값 그대로면 불필요)
 ```
+
+---
+
+## 🔒 보안
+
+- **https 전용**: `http://` 엔드포인트는 `localhost`·`127.0.0.1`·`::1`·사설 LAN 대역에만 허용합니다. 원격 호스트로 평문 전송하면 중간 경로에 키가 그대로 노출되기 때문에 요청 전에 거부합니다.
+- **리다이렉트에서 키 보호**: 리다이렉트가 다른 호스트·포트로 가거나 `https` → `http`로 내려가면 `Authorization` 헤더를 떼고 따라갑니다.
+- **키는 화면에 남지 않음**: `ask --config`의 API 키 입력은 `getpass`로 에코 없이 받습니다(파이프 입력이면 일반 입력으로 대체). `config.json`은 0600, `sessions/`는 0700.
+- **명령 실행 시 키 격리**: 모델이 만든 명령을 실행할 때 `*_API_KEY`·`ASK_API_KEY` 같은 키 환경변수를 빼고 넘깁니다. 명령이 `env`를 찍어도 키가 나오지 않습니다.
 
 ---
 
@@ -264,6 +273,7 @@ ask chat  <<< $'/limits\n/new\n/help\n/exit\n'
 ```
 
 45개 항목 통과: 채팅 슬래시 명령·세션 저장, 사용량 집계, 손상 파일 복구, 401/429/400/timeout/빈 응답 문구, 모델 자동 갱신, 페이로드 계약(`temperature` 미전송·`thinking:disabled`·`reasoning_effort`), `LANG=C` 한글 출력, `install.sh` Termux/재설치/실패 경로.
+보안 57개 항목 통과: 평문 `http://` 정책(로컬·사설 대역만 허용), 같은 출처/다른 출처/`https`→`http` 리다이렉트의 `Authorization` 처리, `shell=True` 실행 환경의 키 제거, `getpass` 입력과 파이프 fallback, `config.json` 0600·폴더 0700·세션 0600·임시파일 심볼릭 링크 비추종.
 
 ---
 
