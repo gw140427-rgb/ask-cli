@@ -9,6 +9,8 @@ v1.2.0: interactive chat (ask chat / -c), session save/resume-listing,
         2026 model lineup, and a full bug sweep.
 v1.3.0: Claude provider (Anthropic, OpenAI-compatible endpoint) with
         claude-fable-5-2, model lineup re-verified 2026-11-15.
+v1.3.1: Neo-1 provider — the user's own fine-tuned model (EXAONE 4.0 1.2B
+        LoRA) served by the local Ollama, selectable with /model neo-1.
 """
 
 import argparse
@@ -29,7 +31,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 
 # ASK_HOME lets you move the whole config dir (used by tests and portable installs).
 CONFIG_DIR = os.path.expanduser(os.environ.get("ASK_HOME") or "~/.config/ask")
@@ -167,6 +169,14 @@ PROVIDERS = {
         "default_model": "qwen3.5:9b",
         "env_key": "",
         "daily_limit": 0,             # unlimited, runs on your own machine
+        "extra": {},
+    },
+    "neo-1": {
+        "label": "Neo-1 (내 모델 · Ollama)",
+        "endpoint": "http://localhost:11434/v1/chat/completions",
+        "default_model": "neo-1",
+        "env_key": "",
+        "daily_limit": 0,             # unlimited, own fine-tuned model on local Ollama
         "extra": {},
     },
     "custom": {
@@ -490,7 +500,7 @@ def render_limits(config):
     print(f"  제공자   {paint(provider, CYAN, BOLD)} · {model}")
     print(f"  오늘 요청 {paint(f'{requests:,}', BOLD)}회  (성공 {ok_calls} / 실패 {errors})")
 
-    if provider == "ollama":
+    if provider in ("ollama", "neo-1"):
         print(f"  한도     {paint('무제한 (로컬 모델)', GREEN, BOLD)} — 내 기기에서 돌아갑니다")
     elif limit > 0:
         print(f"  한도     {requests:,} / {limit:,}회  (참고용 소프트 한도)")
@@ -523,7 +533,7 @@ def provider_timeout(config):
     t = config.get("timeout")
     if isinstance(t, (int, float)) and not isinstance(t, bool) and t > 0:
         return int(t)
-    return LOCAL_TIMEOUT if config.get("provider") == "ollama" else REQUEST_TIMEOUT
+    return LOCAL_TIMEOUT if config.get("provider") in ("ollama", "neo-1") else REQUEST_TIMEOUT
 
 
 def extract_error_message(body):
@@ -665,7 +675,7 @@ def _network_chat(messages, config):
         raise AskError("엔드포인트가 비어 있습니다 — ask --config 로 다시 설정하세요.")
     if not model:
         raise AskError("모델 이름이 비어 있습니다 — ask --config 또는 /model 로 지정하세요.")
-    if not api_key and provider not in ("ollama", "custom"):
+    if not api_key and provider not in ("ollama", "custom", "neo-1"):
         raise AskError(
             "API 키가 없습니다 — `ask --config` 로 넣거나 export ASK_API_KEY='...' 하세요. "
             "로컬 모델을 쓰려면 /model ollama"
@@ -1045,7 +1055,7 @@ def switch_model(config, arg):
             if name == "custom":
                 continue
             mark = "←" if name == config.get("provider") else " "
-            key_note = "" if name == "ollama" else (" 키 있음" if config.get("keys", {}).get(name) or os.environ.get(info["env_key"], "") else " 키 필요")
+            key_note = "" if name in ("ollama", "neo-1") else (" 키 있음" if config.get("keys", {}).get(name) or os.environ.get(info["env_key"], "") else " 키 필요")
             print(f"    {mark} {paint(name, CYAN)}: {info['default_model']}" + (paint(key_note, DIM) if key_note else ""))
         print()
         return config
@@ -1053,7 +1063,7 @@ def switch_model(config, arg):
     if arg.lower() in PROVIDERS:
         name = arg.lower()
         info = PROVIDERS[name]
-        if name not in ("ollama", "custom"):
+        if name not in ("ollama", "custom", "neo-1"):
             has_key = bool(config.get("keys", {}).get(name) or os.environ.get(info["env_key"], "") or os.environ.get("ASK_API_KEY"))
             if not has_key:
                 raise AskError(f"{name} 키가 없습니다 — `ask --config` 로 넣은 뒤 다시 전환하세요.")
@@ -1121,7 +1131,7 @@ def read_chat_line():
 
 def chat_loop(config, initial=None):
     session = new_session(config)
-    key_missing = config.get("provider") not in ("ollama", "custom") and not config.get("api_key")
+    key_missing = config.get("provider") not in ("ollama", "custom", "neo-1") and not config.get("api_key")
 
     print()
     print(paint("╭ ask chat", BOLD, CYAN) + paint(f" ─ {config.get('provider')} · {config.get('model')}", DIM))

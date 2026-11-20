@@ -140,6 +140,7 @@ export ASK_HOME="$HOME/.config/ask" # 설정 폴더를 옮길 때 (기본값 그
 | 제공자 | 기본 모델 | 무료 | 메모 |
 | --- | --- | --- | --- |
 | `ollama` | `qwen3.5:9b` | 로컬·무제한 | 키 불필요. `qwen3.5:2b`/`4b`는 더 가볍습니다 |
+| `neo-1` | `neo-1` | 로컬·무제한 | 직접 학습한 내 모델 (EXAONE 4.0 1.2B LoRA). 로컬 Ollama에 `neo-1`로 등록해 두면 됨 |
 | `gemini` | `gemini-4-hydrogen` | 무료 티어 | 2026-11-12 공개. 대안 `gemini-4-carbon`, `gemini-4-argon` |
 | `groq` | `openai/gpt-oss-120b` | 무료 티어 | 대안 `openai/gpt-oss-20b`(더 빠름), `qwen/qwen3.8-27b` |
 | `openai` | `gpt-6.1-sol` | 유료 | 대안 `gpt-6-astra`(최상위), `gpt-6-luna`(저렴) |
@@ -224,6 +225,10 @@ ask --config      # 5번 선택
 ---
 
 ## 🆕 변경 내역
+
+### v1.3.1 — Neo-1 제공자 추가
+**신기능**
+- `neo-1` 제공자 추가: 직접 파인튜닝한 모델 Neo-1(EXAONE 4.0 1.2B LoRA)을 로컬 Ollama(`http://localhost:11434`)에서 서빙해 바로 골라 쓸 수 있습니다. 채팅에서 `/model neo-1` 한 번이면 엔드포인트까지 함께 전환되고, 키 없이·무제한으로 동작합니다 (`ollama pull` 대신 `ollama create neo-1` 로 등록된 모델이 필요합니다)
 
 ### v1.3.0 — Claude 제공자 추가
 **신기능**
