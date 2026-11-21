@@ -226,6 +226,10 @@ ask --config      # 5번 선택
 
 ## 🆕 변경 내역
 
+### v1.3.2 — Neo-1 Plus 제공자 추가
+**신기능**
+- `neo-1-plus` 제공자 추가: 2회차 파인튜닝 모델 Neo-1 Plus(kullm-v2 12,000개 + "모르면 모른다" 데이터 72개, EXAONE 4.0 1.2B LoRA)를 로컬 Ollama에서 바로 골라 쓸 수 있습니다. 채팅에서 `/model neo-1-plus`, 키 없이·무제한 (`ollama create neo-1-plus` 로 등록된 모델이 필요합니다)
+
 ### v1.3.1 — Neo-1 제공자 추가
 **신기능**
 - `neo-1` 제공자 추가: 직접 파인튜닝한 모델 Neo-1(EXAONE 4.0 1.2B LoRA)을 로컬 Ollama(`http://localhost:11434`)에서 서빙해 바로 골라 쓸 수 있습니다. 채팅에서 `/model neo-1` 한 번이면 엔드포인트까지 함께 전환되고, 키 없이·무제한으로 동작합니다 (`ollama pull` 대신 `ollama create neo-1` 로 등록된 모델이 필요합니다)
